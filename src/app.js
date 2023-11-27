@@ -11,49 +11,38 @@ const upload = multer({ storage });
 app.use(express.json());
 app.use(express.static('public'));
 
-// Middleware to set default image format
-app.use(async (req, res, next) => {
-  try {
-    if (!req.file) {
-      return res.status(400).send('Error: No image found');
-    }
+// Function to check if the file format is supported
+const isSupportedFormat = (filename) => {
+  const supportedFormats = ['webp', 'png', 'jpeg', 'jpg'];
+  const format = filename.split('.').pop().toLowerCase();
+  return supportedFormats.includes(format);
+};
 
-    const imageBuffer = req.file.buffer;
-    const metadata = await sharp(imageBuffer).metadata();
-    req.defaultFormat = metadata.format.toLowerCase();
-    next();
-  } catch (error) {
-    console.error(error);
-    req.defaultFormat = 'png'; // Default to JPEG in case of an error
-    next();
-  }
-});
-
-// Define the route for image compression
+// Endpoint for image compression
 app.post('/compress', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Error: No image found');
   }
 
-  const { width, height, quality, format } = req.body;
-  const defaultFormat = req.defaultFormat;
+  // Check if the format is supported
+  if (!isSupportedFormat(req.file.originalname)) {
+    return res.status(400).send('Error: Unsupported image format');
+  }
+
+  const { width, height, quality, format: requestedFormat } = req.body;
+  const qualityValue = quality ? parseInt(quality) : 100;
+  const format = requestedFormat || req.file.originalname.split('.').pop().toLowerCase();
 
   try {
-    const imageBuffer = req.file.buffer;
-    const qualityValue = quality ? parseInt(quality) : 100;
-    const formatOption = format || defaultFormat;
+    const { width: originalWidth, height: originalHeight } = await sharp(req.file.buffer).metadata();
 
-    const { width: originalWidth, height: originalHeight } = await sharp(imageBuffer).metadata();
-    const inputWidth = width ? parseInt(width) : originalWidth;
-    const inputHeight = height ? parseInt(height) : originalHeight;
-
-    const resizedImage = await sharp(imageBuffer)
-      .resize({ width: inputWidth, height: inputHeight })
-      .toFormat(formatOption)
+    const resizedImage = await sharp(req.file.buffer)
+      .resize({ width: parseInt(width || originalWidth), height: parseInt(height || originalHeight) })
+      .toFormat(format)
       .png({ quality: qualityValue })
       .toBuffer();
 
-    const contentType = `image/${formatOption === 'input' ? defaultFormat : formatOption}`;
+    const contentType = `image/${format}`;
     res.setHeader('Content-Type', contentType);
     res.send(resizedImage);
   } catch (error) {
@@ -66,6 +55,11 @@ app.post('/compress', upload.single('image'), async (req, res) => {
 app.get('/metadata', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Error: No image found');
+  }
+
+  // Check if the format is supported
+  if (!isSupportedFormat(req.file.originalname)) {
+    return res.status(400).send('Error: Unsupported image format');
   }
 
   try {
@@ -82,6 +76,11 @@ app.get('/metadata', upload.single('image'), async (req, res) => {
 app.post('/rotate', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Error: No image found');
+  }
+
+  // Check if the format is supported
+  if (!isSupportedFormat(req.file.originalname)) {
+    return res.status(400).send('Error: Unsupported image format');
   }
 
   const { angle } = req.body;
@@ -102,6 +101,11 @@ app.post('/rotate', upload.single('image'), async (req, res) => {
 app.post('/flip', upload.single('image'), async (req, res) => {
   if (!req.file) {
     return res.status(400).send('Error: No image found');
+  }
+
+  // Check if the format is supported
+  if (!isSupportedFormat(req.file.originalname)) {
+    return res.status(400).send('Error: Unsupported image format');
   }
 
   const { direction } = req.body; // 'horizontal' or 'vertical'
